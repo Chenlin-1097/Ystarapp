@@ -3,8 +3,9 @@ import { CONFIG } from '../config/config';
 
 class FeishuService {
   constructor() {
+    // 使用本地后端API
     this.api = axios.create({
-      baseURL: 'https://open.feishu.cn/open-apis',
+      baseURL: 'http://localhost:3001/api',
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -39,89 +40,41 @@ class FeishuService {
     );
 
     this.accessToken = null;
-    this.tokenExpireTime = null;
-  }
-
-  // 获取访问令牌
-  async getAccessToken() {
-    try {
-      console.log('正在获取访问令牌...');
-      
-      const response = await this.api.post('/auth/v3/tenant_access_token/internal', {
-        app_id: CONFIG.FEISHU.APP_ID,
-        app_secret: CONFIG.FEISHU.APP_SECRET
-      });
-
-      const data = response.data;
-      
-      if (data.code === 0) {
-        this.accessToken = data.tenant_access_token;
-        this.tokenExpireTime = Date.now() + (data.expire - 300) * 1000; // 提前5分钟刷新
-        console.log('✅ 访问令牌获取成功');
-        return this.accessToken;
-      } else {
-        throw new Error(data.msg || '获取访问令牌失败');
-      }
-    } catch (error) {
-      console.error('获取访问令牌错误:', error.message);
-      throw error;
-    }
-  }
-
-  // 检查并刷新访问令牌
-  async ensureAccessToken() {
-    if (!this.accessToken || Date.now() >= this.tokenExpireTime) {
-      await this.getAccessToken();
-    }
-    return this.accessToken;
   }
 
   // 检查连接
   async checkConnection() {
     try {
-      console.log('检查飞书API连接...');
-      console.log('应用ID:', CONFIG.FEISHU.APP_ID);
+      console.log('检查后端API连接...');
       
-      await this.getAccessToken();
-      console.log('✅ 飞书API连接正常');
-      return true;
+      const response = await this.api.get('/status');
+      
+      if (response.data && response.data.status === 'running') {
+        console.log('✅ 后端API连接正常');
+        return true;
+      } else {
+        console.log('❌ 后端API状态异常');
+        return false;
+      }
     } catch (error) {
       console.error('连接检查失败:', error.message);
-      if (error.response) {
-        console.error('HTTP状态:', error.response.status);
-        console.error('响应数据:', error.response.data);
-      }
-      console.error('请求配置:', error.config);
       return false;
     }
   }
 
-  // 用户登录验证
+  // 用户登录验证 - 使用后端API
   async login(username, password) {
     try {
-      const response = await this.api.get(`/bitable/v1/apps/${CONFIG.TABLES.USERS.APP_TOKEN}/tables/${CONFIG.TABLES.USERS.TABLE_ID}/records`, {
-        headers: {
-          'Authorization': `Bearer ${await this.ensureAccessToken()}`,
-          'Content-Type': 'application/json'
-        }
+      const response = await this.api.post('/login', {
+        username,
+        password
       });
 
-      if (response.data.code === 0) {
-        const users = response.data.data.items;
-        const user = users.find(record => {
-          const fields = record.fields;
-          return fields[CONFIG.TABLES.USERS.FIELDS.USERNAME] === username &&
-                 fields[CONFIG.TABLES.USERS.FIELDS.PASSWORD] === password;
-        });
-
-        if (user) {
-          return {
-            id: user.record_id,
-            username: user.fields[CONFIG.TABLES.USERS.FIELDS.USERNAME],
-            name: user.fields[CONFIG.TABLES.USERS.FIELDS.NAME],
-            permissions: user.fields[CONFIG.TABLES.USERS.FIELDS.PERMISSIONS] || []
-          };
-        }
+      if (response.data && response.data.success) {
+        return {
+          token: response.data.token,
+          user: response.data.user
+        };
       }
       return null;
     } catch (error) {
@@ -130,16 +83,22 @@ class FeishuService {
     }
   }
 
-  // 获取表格数据
+  // 获取表格数据 - 使用后端API
   async getTableData(appToken, tableId, pageSize = 100) {
     try {
       console.log(`正在获取表格数据 - App: ${appToken}, Table: ${tableId}`);
-      const token = await this.ensureAccessToken();
       
-      const response = await this.api.get(`/bitable/v1/apps/${appToken}/tables/${tableId}/records`, {
+      // 根据表格类型调用不同的后端端点
+      let endpoint = '/products';
+      if (tableId === CONFIG.TABLES.USERS.TABLE_ID) {
+        endpoint = '/users';
+      } else if (tableId === CONFIG.TABLES.WORK_HISTORY.TABLE_ID) {
+        endpoint = '/work-history';
+      }
+      
+      const response = await this.api.get(endpoint, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${this.accessToken}`
         },
         params: {
           page_size: pageSize
@@ -149,10 +108,10 @@ class FeishuService {
       console.log('表格数据响应状态:', response.status);
       console.log('表格数据响应:', response.data);
 
-      if (response.data.code === 0) {
-        return response.data.data.items || [];
+      if (response.data) {
+        return response.data;
       } else {
-        throw new Error(`获取表格数据失败: ${response.data.msg}`);
+        throw new Error('获取表格数据失败');
       }
     } catch (error) {
       console.error('获取表格数据错误:', {
@@ -220,7 +179,7 @@ class FeishuService {
     try {
       const response = await this.api.get(`/bitable/v1/apps/${CONFIG.TABLES.PRODUCTS.APP_TOKEN}/tables/${CONFIG.TABLES.PRODUCTS.TABLE_ID}/records`, {
         headers: {
-          'Authorization': `Bearer ${await this.ensureAccessToken()}`,
+          'Authorization': `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json'
         },
         params: {

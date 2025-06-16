@@ -23,9 +23,9 @@ const NetworkTest = () => {
       console.log('🔍 测试2: 直接访问飞书域名');
       testResults.feishuDomain = await testFeishuDomain();
 
-      // 测试3: 直接API连接测试
-      console.log('🔍 测试3: 直接API连接测试');
-      testResults.proxyConnection = await testProxyConnection();
+      // 测试3: API连接测试
+      console.log('🔍 测试3: API连接测试');
+      testResults.apiConnection = await testApiConnection();
 
       // 测试4: 飞书API认证
       console.log('🔍 测试4: 飞书API认证');
@@ -67,44 +67,40 @@ const NetworkTest = () => {
     }
   };
 
-  const testProxyConnection = async () => {
+  const testApiConnection = async () => {
     try {
-      console.log('🚀 测试直接API连接: https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal');
+      console.log('🚀 测试后端API连接: http://localhost:3001/api/status');
       
-      const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
-        method: 'POST',
+      const response = await fetch('http://localhost:3001/api/status', {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          app_id: CONFIG.FEISHU.APP_ID,
-          app_secret: CONFIG.FEISHU.APP_SECRET
-        })
+        }
       });
 
-      console.log('📊 直接API响应状态:', response.status);
+      console.log('📊 后端API响应状态:', response.status);
       const data = await response.json();
-      console.log('📊 直接API响应数据:', data);
+      console.log('📊 后端API响应数据:', data);
 
-      if (response.ok && data.code === 0) {
+      if (response.ok && data.status === 'running') {
         return { 
           success: true, 
-          message: `✅ 直接API连接正常，获取到访问令牌`,
-          details: `状态码: ${response.status}, 令牌: ${data.tenant_access_token?.substring(0, 20)}...`
+          message: `✅ 后端API连接正常`,
+          details: `状态码: ${response.status}, 版本: ${data.version}, 时间: ${data.timestamp}`
         };
       } else {
         return { 
           success: false, 
-          message: `❌ 直接API连接失败`,
-          details: `状态码: ${response.status}, 错误: ${data.msg || data.error || '未知错误'}`
+          message: `❌ 后端API连接失败`,
+          details: `状态码: ${response.status}, 错误: ${data.error || '未知错误'}`
         };
       }
     } catch (error) {
-      console.error('❌ 直接API连接错误:', error);
+      console.error('❌ 后端API连接错误:', error);
       return { 
         success: false, 
-        message: '❌ 直接API连接错误: ' + error.message,
-        details: error.stack
+        message: '❌ 后端API连接错误: ' + error.message,
+        details: '请确保后端服务器在端口3001上运行'
       };
     }
   };
@@ -190,7 +186,7 @@ const NetworkTest = () => {
             <Descriptions.Item label="飞书应用ID">{CONFIG.FEISHU.APP_ID}</Descriptions.Item>
             <Descriptions.Item label="飞书应用密钥">{CONFIG.FEISHU.APP_SECRET?.substring(0, 10)}***</Descriptions.Item>
             <Descriptions.Item label="API基础地址">https://open.feishu.cn/open-apis</Descriptions.Item>
-            <Descriptions.Item label="连接方式">直接API调用 (无代理)</Descriptions.Item>
+            <Descriptions.Item label="连接方式">后端API代理 (http://localhost:3001/api)</Descriptions.Item>
             <Descriptions.Item label="用户表Token">{CONFIG.TABLES.USERS.APP_TOKEN}</Descriptions.Item>
             <Descriptions.Item label="用户表ID">{CONFIG.TABLES.USERS.TABLE_ID}</Descriptions.Item>
             <Descriptions.Item label="产品表Token">{CONFIG.TABLES.PRODUCTS.APP_TOKEN}</Descriptions.Item>
@@ -203,7 +199,7 @@ const NetworkTest = () => {
           <Space direction="vertical" style={{ width: '100%' }}>
             {renderTestResult('1️⃣ 基本网络连接', results.basicConnection)}
             {renderTestResult('2️⃣ 飞书域名访问', results.feishuDomain)}
-            {renderTestResult('3️⃣ 直接API连接测试', results.proxyConnection)}
+            {renderTestResult('3️⃣ API连接测试', results.apiConnection)}
             {renderTestResult('4️⃣ 飞书API认证', results.feishuAuth)}
             {renderTestResult('5️⃣ 用户表格访问', results.userTableAccess)}
           </Space>

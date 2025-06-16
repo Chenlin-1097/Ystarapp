@@ -307,6 +307,45 @@ app.get('/api/work-history', authenticateToken, async (req, res) => {
   }
 });
 
+// 获取用户数据（用于测试连接）
+app.get('/api/users', async (req, res) => {
+  try {
+    const token = await getAccessToken();
+    
+    const response = await axios.get(
+      `${CONFIG.FEISHU.BASE_URL}/bitable/v1/apps/${CONFIG.TABLES.USERS.APP_TOKEN}/tables/${CONFIG.TABLES.USERS.TABLE_ID}/records`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          page_size: 10
+        }
+      }
+    );
+
+    if (response.data.code === 0) {
+      const records = response.data.data.items;
+      const users = records
+        .filter(record => record.fields && Object.keys(record.fields).length > 0)
+        .map(record => ({
+          id: record.record_id,
+          username: record.fields[CONFIG.TABLES.USERS.FIELDS.USERNAME],
+          name: record.fields[CONFIG.TABLES.USERS.FIELDS.NAME],
+          permissions: record.fields[CONFIG.TABLES.USERS.FIELDS.PERMISSIONS]
+        }));
+
+      res.json(users);
+    } else {
+      res.status(500).json({ message: '获取用户数据失败' });
+    }
+  } catch (error) {
+    console.error('获取用户数据失败:', error.message);
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
 // 管理员权限验证中间件
 function requireAdmin(req, res, next) {
   if (req.user.username !== 'admin') {

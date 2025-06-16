@@ -13,6 +13,7 @@ module.exports = function(app) {
       pathRewrite: {
         '^/feishu-api': '/open-apis'
       },
+      logLevel: 'debug',
       onProxyReq: (proxyReq, req, res) => {
         console.log(`🚀 代理请求: ${req.method} ${req.originalUrl} -> ${proxyReq.protocol}//${proxyReq.getHeader('host')}${proxyReq.path}`);
       },
@@ -21,6 +22,10 @@ module.exports = function(app) {
       },
       onError: (err, req, res) => {
         console.error(`❌ 代理错误: ${err.message} for ${req.originalUrl}`);
+        res.writeHead(500, {
+          'Content-Type': 'text/plain'
+        });
+        res.end('代理错误: ' + err.message);
       }
     })
   );
