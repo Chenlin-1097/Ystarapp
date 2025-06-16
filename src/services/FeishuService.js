@@ -3,9 +3,14 @@ import { CONFIG } from '../config/config';
 
 class FeishuService {
   constructor() {
-    // 使用本地后端API
+    // 根据环境使用不同的API基础地址
+    const isProduction = process.env.NODE_ENV === 'production';
+    const baseURL = isProduction 
+      ? '/.netlify/functions/feishu-api'  // 生产环境使用Netlify Functions
+      : '/.netlify/functions/feishu-api'; // 开发环境也可以使用Functions（如果本地运行netlify dev）
+
     this.api = axios.create({
-      baseURL: 'http://localhost:3001/api',
+      baseURL,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -45,15 +50,20 @@ class FeishuService {
   // 检查连接
   async checkConnection() {
     try {
-      console.log('检查后端API连接...');
+      console.log('检查飞书API连接...');
       
-      const response = await this.api.get('/status');
+      // 尝试获取租户访问令牌来测试连接
+      const response = await this.api.post('/auth/v3/tenant_access_token/internal', {
+        app_id: CONFIG.FEISHU.APP_ID,
+        app_secret: CONFIG.FEISHU.APP_SECRET
+      });
       
-      if (response.data && response.data.status === 'running') {
-        console.log('✅ 后端API连接正常');
+      if (response.data && response.data.code === 0) {
+        console.log('✅ 飞书API连接正常');
+        this.accessToken = response.data.tenant_access_token;
         return true;
       } else {
-        console.log('❌ 后端API状态异常');
+        console.log('❌ 飞书API连接失败:', response.data?.msg);
         return false;
       }
     } catch (error) {
@@ -62,43 +72,44 @@ class FeishuService {
     }
   }
 
-  // 用户登录验证 - 使用后端API
-  async login(username, password) {
+  // 获取访问令牌
+  async getAccessToken() {
     try {
-      const response = await this.api.post('/login', {
-        username,
-        password
+      const response = await this.api.post('/auth/v3/tenant_access_token/internal', {
+        app_id: CONFIG.FEISHU.APP_ID,
+        app_secret: CONFIG.FEISHU.APP_SECRET
       });
 
-      if (response.data && response.data.success) {
-        return {
-          token: response.data.token,
-          user: response.data.user
-        };
+      if (response.data.code === 0) {
+        this.accessToken = response.data.tenant_access_token;
+        return this.accessToken;
+      } else {
+        throw new Error(`获取访问令牌失败: ${response.data.msg}`);
       }
-      return null;
     } catch (error) {
-      console.error('登录验证失败:', error);
+      console.error('获取访问令牌失败:', error);
       throw error;
     }
   }
 
-  // 获取表格数据 - 使用后端API
+  // 确保有有效的访问令牌
+  async ensureAccessToken() {
+    if (!this.accessToken) {
+      await this.getAccessToken();
+    }
+    return this.accessToken;
+  }
+
+  // 获取表格数据
   async getTableData(appToken, tableId, pageSize = 100) {
     try {
       console.log(`正在获取表格数据 - App: ${appToken}, Table: ${tableId}`);
       
-      // 根据表格类型调用不同的后端端点
-      let endpoint = '/products';
-      if (tableId === CONFIG.TABLES.USERS.TABLE_ID) {
-        endpoint = '/users';
-      } else if (tableId === CONFIG.TABLES.WORK_HISTORY.TABLE_ID) {
-        endpoint = '/work-history';
-      }
+      const token = await this.ensureAccessToken();
       
-      const response = await this.api.get(endpoint, {
+      const response = await this.api.get(`/bitable/v1/apps/${appToken}/tables/${tableId}/records`, {
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`
+          'Authorization': `Bearer ${token}`
         },
         params: {
           page_size: pageSize
@@ -108,10 +119,10 @@ class FeishuService {
       console.log('表格数据响应状态:', response.status);
       console.log('表格数据响应:', response.data);
 
-      if (response.data) {
-        return response.data;
+      if (response.data && response.data.code === 0) {
+        return response.data.data.items || [];
       } else {
-        throw new Error('获取表格数据失败');
+        throw new Error(`获取表格数据失败: ${response.data?.msg || '未知错误'}`);
       }
     } catch (error) {
       console.error('获取表格数据错误:', {
@@ -120,6 +131,42 @@ class FeishuService {
         data: error.response?.data,
         url: error.config?.url
       });
+      throw error;
+    }
+  }
+
+  // 用户登录验证
+  async login(username, password) {
+    try {
+      const token = await this.ensureAccessToken();
+      
+      const response = await this.api.get(
+        `/bitable/v1/apps/${CONFIG.TABLES.USERS.APP_TOKEN}/tables/${CONFIG.TABLES.USERS.TABLE_ID}/records`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          params: {
+            filter: `AND(CurrentValue.[${CONFIG.TABLES.USERS.FIELDS.USERNAME}]="${username}", CurrentValue.[${CONFIG.TABLES.USERS.FIELDS.PASSWORD}]="${password}")`,
+            page_size: 1
+          }
+        }
+      );
+
+      if (response.data.code === 0) {
+        const records = response.data.data.items;
+        if (records && records.length > 0) {
+          const user = records[0].fields;
+          return {
+            username: user[CONFIG.TABLES.USERS.FIELDS.USERNAME],
+            name: user[CONFIG.TABLES.USERS.FIELDS.NAME],
+            permissions: user[CONFIG.TABLES.USERS.FIELDS.PERMISSIONS]
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('登录验证失败:', error);
       throw error;
     }
   }
@@ -177,9 +224,10 @@ class FeishuService {
   // 根据产品编码查找记录
   async findRecordByCode(productCode) {
     try {
+      const token = await this.ensureAccessToken();
       const response = await this.api.get(`/bitable/v1/apps/${CONFIG.TABLES.PRODUCTS.APP_TOKEN}/tables/${CONFIG.TABLES.PRODUCTS.TABLE_ID}/records`, {
         headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         params: {
@@ -269,7 +317,7 @@ class FeishuService {
   // 获取单个记录
   async getRecord(appToken, tableId, recordId) {
     try {
-      const token = await this.getAccessToken();
+      const token = await this.ensureAccessToken();
       const response = await this.api.get(`/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,

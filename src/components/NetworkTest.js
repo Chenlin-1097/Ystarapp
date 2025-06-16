@@ -23,9 +23,9 @@ const NetworkTest = () => {
       console.log('🔍 测试2: 直接访问飞书域名');
       testResults.feishuDomain = await testFeishuDomain();
 
-      // 测试3: API连接测试
-      console.log('🔍 测试3: API连接测试');
-      testResults.apiConnection = await testApiConnection();
+      // 测试3: Netlify Functions测试
+      console.log('🔍 测试3: Netlify Functions测试');
+      testResults.netlifyFunctions = await testNetlifyFunctions();
 
       // 测试4: 飞书API认证
       console.log('🔍 测试4: 飞书API认证');
@@ -67,40 +67,56 @@ const NetworkTest = () => {
     }
   };
 
-  const testApiConnection = async () => {
+  const testNetlifyFunctions = async () => {
     try {
-      console.log('🚀 测试后端API连接: http://localhost:3001/api/status');
+      console.log('🚀 测试Netlify Functions');
       
-      const response = await fetch('http://localhost:3001/api/status', {
-        method: 'GET',
+      // 在开发环境中，如果没有运行netlify dev，这个测试会失败
+      // 在生产环境中，这个应该能正常工作
+      const response = await fetch('/.netlify/functions/feishu-api/auth/v3/tenant_access_token/internal', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        body: JSON.stringify({
+          app_id: CONFIG.FEISHU.APP_ID,
+          app_secret: CONFIG.FEISHU.APP_SECRET
+        })
       });
 
-      console.log('📊 后端API响应状态:', response.status);
-      const data = await response.json();
-      console.log('📊 后端API响应数据:', data);
-
-      if (response.ok && data.status === 'running') {
-        return { 
-          success: true, 
-          message: `✅ 后端API连接正常`,
-          details: `状态码: ${response.status}, 版本: ${data.version}, 时间: ${data.timestamp}`
-        };
+      console.log('📊 Netlify Functions响应状态:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Netlify Functions响应数据:', data);
+        
+        if (data.code === 0) {
+          return { 
+            success: true, 
+            message: `✅ Netlify Functions正常工作`,
+            details: `获取到访问令牌，过期时间: ${data.expire}秒`
+          };
+        } else {
+          return { 
+            success: false, 
+            message: `❌ Netlify Functions返回错误`,
+            details: `错误: ${data.msg || '未知错误'}`
+          };
+        }
       } else {
+        const errorText = await response.text();
         return { 
           success: false, 
-          message: `❌ 后端API连接失败`,
-          details: `状态码: ${response.status}, 错误: ${data.error || '未知错误'}`
+          message: `❌ Netlify Functions HTTP错误`,
+          details: `状态码: ${response.status}, 错误: ${errorText}`
         };
       }
     } catch (error) {
-      console.error('❌ 后端API连接错误:', error);
+      console.error('❌ Netlify Functions测试错误:', error);
       return { 
         success: false, 
-        message: '❌ 后端API连接错误: ' + error.message,
-        details: '请确保后端服务器在端口3001上运行'
+        message: '❌ Netlify Functions测试错误: ' + error.message,
+        details: '这可能是因为本地没有运行 netlify dev，在生产环境中应该正常工作'
       };
     }
   };
@@ -186,7 +202,7 @@ const NetworkTest = () => {
             <Descriptions.Item label="飞书应用ID">{CONFIG.FEISHU.APP_ID}</Descriptions.Item>
             <Descriptions.Item label="飞书应用密钥">{CONFIG.FEISHU.APP_SECRET?.substring(0, 10)}***</Descriptions.Item>
             <Descriptions.Item label="API基础地址">https://open.feishu.cn/open-apis</Descriptions.Item>
-            <Descriptions.Item label="连接方式">后端API代理 (http://localhost:3001/api)</Descriptions.Item>
+            <Descriptions.Item label="连接方式">Netlify Functions (/.netlify/functions/feishu-api)</Descriptions.Item>
             <Descriptions.Item label="用户表Token">{CONFIG.TABLES.USERS.APP_TOKEN}</Descriptions.Item>
             <Descriptions.Item label="用户表ID">{CONFIG.TABLES.USERS.TABLE_ID}</Descriptions.Item>
             <Descriptions.Item label="产品表Token">{CONFIG.TABLES.PRODUCTS.APP_TOKEN}</Descriptions.Item>
@@ -199,7 +215,7 @@ const NetworkTest = () => {
           <Space direction="vertical" style={{ width: '100%' }}>
             {renderTestResult('1️⃣ 基本网络连接', results.basicConnection)}
             {renderTestResult('2️⃣ 飞书域名访问', results.feishuDomain)}
-            {renderTestResult('3️⃣ API连接测试', results.apiConnection)}
+            {renderTestResult('3️⃣ Netlify Functions测试', results.netlifyFunctions)}
             {renderTestResult('4️⃣ 飞书API认证', results.feishuAuth)}
             {renderTestResult('5️⃣ 用户表格访问', results.userTableAccess)}
           </Space>
