@@ -3,28 +3,40 @@ import { CONFIG } from '../config/config';
 
 class FeishuService {
   constructor() {
-    // 根据环境使用不同的API基础地址
+    // 检测环境：开发环境和生产环境使用不同的API方式
     const isProduction = process.env.NODE_ENV === 'production';
-    const baseURL = isProduction 
-      ? '/.netlify/functions/feishu-api'  // 生产环境使用Netlify Functions
-      : '/.netlify/functions/feishu-api'; // 开发环境也可以使用Functions（如果本地运行netlify dev）
-
-    this.api = axios.create({
-      baseURL,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
+    const isDevelopment = !isProduction;
+    
+    if (isDevelopment) {
+      // 开发环境：直接调用飞书API（通过package.json的proxy配置解决CORS）
+      this.api = axios.create({
+        baseURL: '/open-apis', // 通过React的proxy配置代理到飞书API
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      this.isDevelopment = true;
+    } else {
+      // 生产环境：使用Netlify Functions
+      this.api = axios.create({
+        baseURL: '/.netlify/functions/feishu-api',
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      this.isDevelopment = false;
+    }
 
     // 添加请求拦截器
     this.api.interceptors.request.use(
       (config) => {
-        console.log('发送请求:', config.method.toUpperCase(), config.url);
+        console.log(`🔄 发送请求: ${config.method.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
-        console.error('请求错误:', error);
+        console.error('❌ 请求错误:', error);
         return Promise.reject(error);
       }
     );
@@ -32,11 +44,11 @@ class FeishuService {
     // 添加响应拦截器
     this.api.interceptors.response.use(
       (response) => {
-        console.log('响应成功:', response.status, response.config.url);
+        console.log(`✅ 响应成功: ${response.status} ${response.config.url}`);
         return response;
       },
       (error) => {
-        console.error('响应错误:', error.response?.status, error.config?.url, error.message);
+        console.error(`❌ 响应错误: ${error.response?.status || 'N/A'} ${error.config?.url} - ${error.message}`);
         if (error.response?.data) {
           console.error('错误详情:', error.response.data);
         }
@@ -50,7 +62,7 @@ class FeishuService {
   // 检查连接
   async checkConnection() {
     try {
-      console.log('检查飞书API连接...');
+      console.log('🔍 检查飞书API连接...');
       
       // 尝试获取租户访问令牌来测试连接
       const response = await this.api.post('/auth/v3/tenant_access_token/internal', {
@@ -59,7 +71,7 @@ class FeishuService {
       });
       
       if (response.data && response.data.code === 0) {
-        console.log('✅ 飞书API连接正常');
+        console.log(`✅ 飞书API连接正常（${this.isDevelopment ? '开发环境' : '生产环境'}）`);
         this.accessToken = response.data.tenant_access_token;
         return true;
       } else {
@@ -67,7 +79,7 @@ class FeishuService {
         return false;
       }
     } catch (error) {
-      console.error('连接检查失败:', error.message);
+      console.error('💥 连接检查失败:', error.message);
       return false;
     }
   }
