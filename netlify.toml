@@ -10,6 +10,11 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/excel-upload"
+  to = "/.netlify/functions/excel-upload"
+  status = 200
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/feishu-api/:splat"
   status = 200

@@ -27,13 +27,19 @@ export const CONFIG = {
       APP_TOKEN: 'RQj7bH20uaeNegsdERUclgcInAd', // 从知识库获取的app_token
       TABLE_ID: 'tblMpF28247NLFfX', // 数据表的table_id
       FIELDS: {
-        CREATE_DATE: '创建日期',
-        CREATOR: '创建人',
-        ORDER_NUMBER: '订单编号',
-        WORK_TYPE_1: '工序1',
-        OPERATOR: '操作人',
-        WORK_TYPE_1_COMPLETE_TIME: '工序1完成时间',
-        ATTACHMENT: '附件'
+        CREATE_DATE: 'fldZyd4lBc', // 创建日期 (类型5)
+        CREATOR: 'fldzpXvaKd', // 创建人 (类型1)
+        ORDER_NUMBER: 'fldX5MgoK8', // 单号 (类型1)
+        STYLE_NUMBER: 'fldh92N7n5', // 款号 (类型1)
+        FRONT_IMAGE: 'fldrgqPYTV', // 正面图 (类型17-附件)
+        BACK_IMAGE: 'fldl8D6m2B', // 反面图 (类型17-附件)
+        DECOMPOSE_NUMBER: 'fldQnhNj4l', // 分解编号 (类型1)
+        MODEL: 'fldHsnXrQL', // 型号 (类型1)
+        NAME: 'fld7o4LDXN', // 姓名 (类型1)
+        BALL_NUMBER: 'fldipTneaM', // 球号 (类型1)
+        QUANTITY: 'fldcAfhBUJ', // 数量 (类型2-数字)
+        QR_CODE: 'fldtXcG0Dq', // 二维码 (类型1)
+        DESIGN: 'fldUBhntMZ' // 做图 (类型1)
       }
     },
 
@@ -49,6 +55,12 @@ export const CONFIG = {
         STATUS: '状态' // 正常/已撤销
       }
     }
+  },
+
+  // 知识库配置
+  WIKI: {
+    SPACE_ID: '7368294892111626244', // 知识库空间ID
+    PARENT_NODE_TOKEN: 'O20dw9tvficXm0kffTWc9qojnOf' // 父节点Token
   },
 
   // 系统配置

@@ -6,11 +6,13 @@ import {
 import { 
   LogoutOutlined, ScanOutlined, ReloadOutlined, 
   HistoryOutlined, UndoOutlined, CheckCircleOutlined,
-  SettingOutlined, WifiOutlined, DisconnectOutlined, UserOutlined
+  SettingOutlined, WifiOutlined, DisconnectOutlined, UserOutlined,
+  UploadOutlined, CloudUploadOutlined, BookOutlined
 } from '@ant-design/icons';
 import { FeishuService } from '../services/FeishuService';
 import ConfigWizard from './ConfigWizard';
 import AdminUserManagement from './AdminUserManagement';
+import WikiUpload from './WikiUpload';
 import moment from 'moment';
 import { CONFIG } from '../config/config.js';
 
@@ -28,6 +30,7 @@ const MainWorkspace = ({ user, networkStatus, onLogout, onNetworkRetry }) => {
   const [lastScanTime, setLastScanTime] = useState(0);
   const [lastScanCode, setLastScanCode] = useState('');
   const [configVisible, setConfigVisible] = useState(false);
+  const [wikiUploadVisible, setWikiUploadVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('workplace');
   
   const scanInputRef = useRef(null);
@@ -237,6 +240,13 @@ const MainWorkspace = ({ user, networkStatus, onLogout, onNetworkRetry }) => {
     }
   };
 
+  // 处理Wiki上传成功
+  const handleWikiUploadSuccess = (uploadResult) => {
+    message.success(uploadResult.message);
+    console.log('Wiki上传结果:', uploadResult);
+    // 可以在这里做其他处理，比如记录上传历史等
+  };
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ 
@@ -259,6 +269,13 @@ const MainWorkspace = ({ user, networkStatus, onLogout, onNetworkRetry }) => {
             {user.username === 'admin' && <Tag color="red" style={{ marginLeft: 8 }}>管理员</Tag>}
           </div>
           <div>{getNetworkStatusBadge()}</div>
+          <Button 
+            icon={<BookOutlined />} 
+            onClick={() => setWikiUploadVisible(true)}
+            type="primary"
+          >
+            文档上传
+          </Button>
           <Button 
             icon={<ReloadOutlined />} 
             onClick={onNetworkRetry}
@@ -437,6 +454,13 @@ const MainWorkspace = ({ user, networkStatus, onLogout, onNetworkRetry }) => {
         visible={configVisible}
         onClose={() => setConfigVisible(false)}
         onSave={handleSaveConfig}
+      />
+
+      {/* Wiki文档上传 */}
+      <WikiUpload
+        visible={wikiUploadVisible}
+        onClose={() => setWikiUploadVisible(false)}
+        onUploadSuccess={handleWikiUploadSuccess}
       />
     </Layout>
   );

@@ -1,31 +1,8 @@
-import axios from 'axios';
-import { CONFIG } from '../config/config.js';
+const axios = require('axios');
 
-class WikiServiceClass {
-  constructor() {
-    this.appId = CONFIG.FEISHU.APP_ID;
-    this.appSecret = CONFIG.FEISHU.APP_SECRET;
-    this.accessToken = null;
-    this.tokenExpireTime = null;
-    
-    this.baseURL = process.env.NODE_ENV === 'development' 
-      ? '/api/feishu' 
-      : CONFIG.FEISHU.BASE_URL;
-    
-    // 创建axios实例
-    this.api = axios.create({
-      baseURL: this.baseURL,
-      timeout: 10000,
-    });
-
-    // 请求拦截器
-    this.api.interceptors.request.use(async (config) => {
-      await this.ensureAccessToken();
-      if (this.accessToken) {
-        config.headers.Authorization = `Bearer ${this.accessToken}`;
-      }
-      return config;
-    });
+class WikiService {
+  constructor(client) {
+    this.client = client;
   }
 
   // 获取访问令牌
@@ -357,6 +334,135 @@ class WikiServiceClass {
       throw error;
     }
   }
+
+  /**
+   * 将文档导入到知识库节点
+   * @param {string} spaceId 知识库ID
+   * @param {string} parentNodeToken 父节点token
+   * @param {string} docToken 文档token
+   * @returns {Promise<Object>} 导入结果
+   */
+  async importDocToWiki(spaceId, parentNodeToken, docToken) {
+    try {
+      console.log('📚 开始导入文档到知识库...');
+      console.log('知识库ID:', spaceId);
+      console.log('父节点Token:', parentNodeToken);
+      console.log('文档Token:', docToken);
+
+      // 调用移动文档API
+      const response = await this.client.wiki.v2.spaceNode.moveDocsToWiki({
+        path: {
+          space_id: spaceId
+        },
+        data: {
+          parent_wiki_token: parentNodeToken,
+          obj_type: 'doc',
+          obj_token: docToken
+        }
+      });
+
+      if (response.code !== 0) {
+        throw new Error(`导入失败: ${response.msg}`);
+      }
+
+      // 如果直接返回wiki_token，说明操作已完成
+      if (response.data.wiki_token) {
+        console.log('✅ 文档导入完成！');
+        console.log('Wiki Token:', response.data.wiki_token);
+        return response.data;
+      }
+
+      // 如果返回task_id，需要轮询检查任务状态
+      if (response.data.task_id) {
+        console.log('⏳ 导入任务已创建，等待完成...');
+        console.log('任务ID:', response.data.task_id);
+        return await this.waitForTaskCompletion(response.data.task_id);
+      }
+
+      // 如果返回applied，说明已发出申请
+      if (response.data.applied) {
+        console.log('📨 已发出导入申请，等待审批...');
+        return response.data;
+      }
+
+      throw new Error('未知的响应格式');
+    } catch (error) {
+      console.error('❌ 导入文档失败:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 等待任务完成
+   * @param {string} taskId 任务ID
+   * @returns {Promise<Object>} 任务结果
+   */
+  async waitForTaskCompletion(taskId) {
+    const maxAttempts = 20; // 最多尝试20次
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      await new Promise(resolve => setTimeout(resolve, 3000)); // 等待3秒
+
+      try {
+        console.log(`🔍 检查任务状态... (${attempts}/${maxAttempts})`);
+        const response = await this.client.wiki.v2.task.get({
+          path: {
+            task_id: taskId
+          },
+          params: {
+            task_type: 'move'
+          }
+        });
+
+        if (response.code !== 0) {
+          throw new Error(`查询任务状态失败: ${response.msg}`);
+        }
+
+        const task = response.data.task;
+        if (!task || !task.move_result || task.move_result.length === 0) {
+          console.log('⏳ 任务仍在处理中...');
+          continue;
+        }
+
+        // 检查每个节点的状态
+        const results = task.move_result.map(result => {
+          const status = result.status === 0 ? '成功' : `失败: ${result.status_msg}`;
+          const node = result.node;
+          return {
+            标题: node.title,
+            状态: status,
+            节点Token: node.node_token,
+            文档Token: node.obj_token
+          };
+        });
+
+        console.log('📊 导入结果:', JSON.stringify(results, null, 2));
+
+        // 如果所有节点都成功导入
+        if (task.move_result.every(r => r.status === 0)) {
+          console.log('✅ 所有文档导入成功！');
+          return {
+            task_id: taskId,
+            results: task.move_result
+          };
+        }
+
+        // 如果有失败的节点
+        throw new Error('部分文档导入失败，请查看详细结果');
+      } catch (error) {
+        if (attempts === maxAttempts) {
+          throw error;
+        }
+        console.warn(`⚠️ 第${attempts}次查询失败: ${error.message}`);
+      }
+    }
+
+    throw new Error(`任务状态查询超时（${maxAttempts}次尝试后），请手动检查导入结果`);
+  }
 }
 
-export const WikiService = new WikiServiceClass(); 
+module.exports = {
+  WikiService
+}; 
